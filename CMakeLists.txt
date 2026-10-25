@@ -33,8 +33,12 @@ endif()
 
 add_executable(LuxEngine apps/main.cpp)
 
+target_compile_definitions(
+  LuxEngine PRIVATE "$<$<CONFIG:Debug>:LUX_DEBUG=1>"
+                    "$<$<CONFIG:Release>:LUX_RELEASE=1>")
+
 find_package(SDL3 CONFIG REQUIRED)
-target_link_libraries(LuxEngine PRIVATE SDL3::SDL3)
+target_link_libraries(LuxEngine PRIVATE SDL3::SDL3 d3d12 dxgi)
 
 if(MINGW)
   # Include the compiler's C++ support libraries in the executable. Windows
