@@ -1,6 +1,6 @@
 # LuxEngine
 
-A D3D12, C++20 game engine.
+A D3D12, C++20 game engine for Windows and Linux through Wine and vkd3d-proton.
 
 ## Prerequisites
 
