@@ -1,1 +1,5 @@
 build
+.cache
+CMakeUserPresets.json
+vcpkg_installed/
+/compile_commands.json
