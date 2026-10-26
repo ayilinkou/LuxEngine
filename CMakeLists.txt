@@ -38,7 +38,15 @@ target_compile_definitions(
                     "$<$<CONFIG:Release>:LUX_RELEASE=1>")
 
 find_package(SDL3 CONFIG REQUIRED)
-target_link_libraries(LuxEngine PRIVATE SDL3::SDL3 d3d12 dxgi)
+find_package(directx-headers CONFIG REQUIRED)
+target_link_libraries(LuxEngine PRIVATE SDL3::SDL3 Microsoft::DirectX-Headers d3d12 dxgi)
+
+# Prefer the packaged headers for unqualified includes such as <d3d12.h>.
+get_target_property(_lux_directx_include_dirs Microsoft::DirectX-Headers
+                    INTERFACE_INCLUDE_DIRECTORIES)
+list(TRANSFORM _lux_directx_include_dirs APPEND "/directx")
+target_include_directories(LuxEngine SYSTEM BEFORE PRIVATE
+                           ${_lux_directx_include_dirs})
 
 if(MINGW)
   # Include the compiler's C++ support libraries in the executable. Windows

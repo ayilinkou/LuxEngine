@@ -1,3 +1,4 @@
+#include <array>
 #include <iostream>
 #include <stdexcept>
 
@@ -5,11 +6,19 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include "d3d12.h"
+#include "directx/d3d12.h"
+#include "dxguids/dxguids.h"
+#include "directx/d3dx12.h"
 #include "dxgi1_6.h"
 #include "wrl.h"
 
 #include "SDL3/SDL.h"
+#include "SDL3/SDL_properties.h"
+#include "SDL3/SDL_video.h"
+
+constexpr UINT MAX_FRAMES_IN_FLIGHT = 2u;
+constexpr UINT WIDTH = 1280u;
+constexpr UINT HEIGHT = 720u;
 
 using namespace Microsoft::WRL;
 
@@ -95,7 +104,7 @@ int main()
         return 1;
     }
 
-    SDL_Window* pWindow = SDL_CreateWindow("Lux Engine", 1280, 720, SDL_WINDOW_RESIZABLE);
+    SDL_Window* pWindow = SDL_CreateWindow("Lux Engine", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
     if (!pWindow)
     {
         std::cout << "SDL_CreateWindow() failed!\n";
@@ -104,7 +113,11 @@ int main()
         return 1;
     }
 
+    HWND hwnd = static_cast<HWND>(SDL_GetPointerProperty(
+        SDL_GetWindowProperties(pWindow), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+
     // Init D3D12
+    // Create device
     UINT dxgiFactoryFlags = 0;
 #ifdef LUX_DEBUG
     ComPtr<ID3D12Debug> debugController;
@@ -136,6 +149,7 @@ int main()
                                         IID_PPV_ARGS(&device)));
     }
 
+    // Create command queue
     ComPtr<ID3D12CommandQueue> commandQueue;
     D3D12_COMMAND_QUEUE_DESC queueDesc{};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
@@ -143,8 +157,53 @@ int main()
     ThrowIfFailed(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue)));
 
     // Create swapchain
+    DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
+    swapChainDesc.BufferCount = MAX_FRAMES_IN_FLIGHT;
+    swapChainDesc.Width = WIDTH;
+    swapChainDesc.Height = HEIGHT;
+    swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    swapChainDesc.SampleDesc.Count = 1u;
+
+    ComPtr<IDXGISwapChain1> swapChain1;
+    ThrowIfFailed(factory->CreateSwapChainForHwnd(commandQueue.Get(), hwnd, &swapChainDesc, nullptr,
+                                                  nullptr, &swapChain1));
+
+    // no fullscreen transitions
+    ThrowIfFailed(factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER));
+
+    ComPtr<IDXGISwapChain3> swapChain;
+    ThrowIfFailed(swapChain1.As(&swapChain));
+    UINT frameIndex = swapChain->GetCurrentBackBufferIndex();
+
     // Create descriptor heaps
+    ComPtr<ID3D12DescriptorHeap> rtvHeap;
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
+    rtvHeapDesc.NumDescriptors = MAX_FRAMES_IN_FLIGHT;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    ThrowIfFailed(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvHeap)));
+
+    UINT rtvDescriptorSize =
+        device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
     // Create frame resources
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle{};
+    rtvHeap->GetCPUDescriptorHandleForHeapStart(&rtvHandle);
+
+    std::array<ComPtr<ID3D12Resource>, MAX_FRAMES_IN_FLIGHT> renderTargets;
+    for (UINT i = 0u; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&renderTargets[i])));
+        device->CreateRenderTargetView(renderTargets[i].Get(), nullptr, rtvHandle);
+        rtvHandle.Offset(1, rtvDescriptorSize);
+    }
+
+    // Create command allocator
+    ComPtr<ID3D12CommandAllocator> commandAllocator;
+    ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                                 IID_PPV_ARGS(&commandAllocator)));
+
     // Create root signature
     // Create pipeline state
     // Create command list
